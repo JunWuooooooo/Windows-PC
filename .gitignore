@@ -3,3 +3,13 @@ Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 *.tmp
+
+# Build output
+PomodoroApp/bin/
+PomodoroApp/obj/
+
+# Local Claude settings (machine-specific permissions)
+.claude/settings.local.json
+
+# Report images (generated)
+report_images/

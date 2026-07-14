@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工厂数据看板</title>
+<style>
+/* ===== Palette — reference instance (palette.md) ===== */
+.viz-root {
+  color-scheme: light;
+  --surface-1:      #fcfcfb;
+  --page-plane:     #f9f9f7;
+  --text-primary:   #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted:     #898781;
+  --gridline:       #e1e0d9;
+  --baseline:       #c3c2b7;
+  --border-ring:    rgba(11,11,11,0.10);
+
+  /* categorical slots */
+  --series-1:  #2a78d6;
+  --series-2:  #1baf7a;
+  --series-3:  #eda100;
+  --series-4:  #008300;
+  --series-5:  #4a3aa7;
+  --series-6:  #e34948;
+  --series-7:  #e87ba4;
+  --series-8:  #eb6834;
+
+  /* sequential blue ramp */
+  --seq-100: #cde2fb; --seq-200: #9ec5f4; --seq-300: #6da7ec;
+  --seq-400: #3987e5; --seq-500: #256abf; --seq-600: #184f95; --seq-700: #0d366b;
+
+  /* status (fixed — never themed) */
+  --status-good:     #0ca30c;
+  --status-warning:  #fab219;
+  --status-serious:  #ec835a;
+  --status-critical: #d03b3b;
+
+  /* delta */
+  --delta-up:   #006300;
+  --delta-down: #d03b3b;
+
+  /* de-emphasis */
+  --de-emphasis: #c3c2b7;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --page-plane:     #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --gridline:       #2c2c2a;
+    --baseline:       #383835;
+    --border-ring:    rgba(255,255,255,0.10);
+
+    --series-1:  #3987e5;
+    --series-2:  #199e70;
+    --series-3:  #c98500;
+    --series-4:  #008300;
+    --series-5:  #9085e9;
+    --series-6:  #e66767;
+    --series-7:  #d55181;
+    --series-8:  #d95926;
+
+    --seq-100: #0d366b; --seq-200: #104281; --seq-300: #184f95;
+    --seq-400: #256abf; --seq-500: #3987e5; --seq-600: #6da7ec; --seq-700: #9ec5f4;
+
+    --delta-up:   #0ca30c;
+    --de-emphasis: #52514e;
+  }
+}
+:root[data-theme="dark"] .viz-root {
+  color-scheme: dark;
+  --surface-1:      #1a1a19;
+  --page-plane:     #0d0d0d;
+  --text-primary:   #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted:     #898781;
+  --gridline:       #2c2c2a;
+  --baseline:       #383835;
+  --border-ring:    rgba(255,255,255,0.10);
+  --series-1:  #3987e5; --series-2:  #199e70; --series-3:  #c98500; --series-4:  #008300;
+  --series-5:  #9085e9; --series-6:  #e66767; --series-7:  #d55181; --series-8:  #d95926;
+  --seq-100: #0d366b; --seq-200: #104281; --seq-300: #184f95;
+  --seq-400: #256abf; --seq-500: #3987e5; --seq-600: #6da7ec; --seq-700: #9ec5f4;
+  --delta-up:   #0ca30c;
+  --de-emphasis: #52514e;
+}
+
+/* ===== Reset & Base ===== */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--page-plane);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+.viz-root {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+}
+
+/* ===== Header ===== */
+.dashboard-header {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 16px;
+  margin-bottom: 28px;
+}
+.dashboard-title {
+  font-size: 22px; font-weight: 700;
+  color: var(--text-primary);
+}
+.dashboard-subtitle {
+  font-size: 13px; color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ===== Filter row ===== */
+.filter-row {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap;
+}
+.filter-chip {
+  padding: 6px 14px; border-radius: 16px;
+  border: 1px solid var(--baseline);
+  background: transparent; color: var(--text-secondary);
+  font-size: 13px; font-family: inherit; cursor: pointer;
+  transition: all 0.15s;
+}
+.filter-chip:hover { border-color: var(--text-muted); color: var(--text-primary); }
+.filter-chip.active {
+  background: var(--series-1); border-color: var(--series-1);
+  color: #fff;
+}
+
+/* ===== KPI Row ===== */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+/* ===== Hero OEE ===== */
+.hero-card {
+  background: var(--surface-1);
+  border-radius: 12px;
+  padding: 28px 32px;
+  border: 1px solid var(--border-ring);
+  display: flex; align-items: center; gap: 32px;
+  margin-bottom: 24px;
+}
+.hero-figure {
+  font-size: 64px; font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+  /* proportional figures — not tabular-nums on large standalone numbers */
+}
+.hero-unit {
+  font-size: 24px; font-weight: 500;
+  color: var(--text-muted);
+}
+.hero-label {
+  font-size: 14px; color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.hero-delta {
+  font-size: 13px; font-weight: 600;
+}
+.hero-delta.up { color: var(--delta-up); }
+.hero-delta.down { color: var(--delta-down); }
+
+/* OEE Meter ring */
+.meter-ring-wrap {
+  position: relative; width: 120px; height: 120px; flex-shrink: 0;
+}
+.meter-ring-svg { transform: rotate(-90deg); width: 120px; height: 120px; }
+.meter-track {
+  fill: none; stroke: var(--seq-200);
+  stroke-width: 10;
+}
+.meter-fill {
+  fill: none; stroke: var(--series-1);
+  stroke-width: 10; stroke-linecap: round;
+  transition: stroke-dashoffset 0.8s ease;
+}
+.meter-center {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px; font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* ===== Stat Tile ===== */
+.stat-tile {
+  background: var(--surface-1);
+  border-radius: 12px;
+  padding: 20px 24px;
+  border: 1px solid var(--border-ring);
+}
+.stat-label {
+  font-size: 13px; color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.stat-value {
+  font-size: 32px; font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+.stat-delta {
+  font-size: 13px; font-weight: 600; margin-top: 6px;
+}
+.stat-delta.up { color: var(--delta-up); }
+.stat-delta.down { color: var(--delta-down); }
+
+/* ===== Section ===== */
+.section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+@media (max-width: 860px) { .section { grid-template-columns: 1fr; } }
+
+/* ===== Card ===== */
+.card {
+  background: var(--surface-1);
+  border-radius: 12px;
+  padding: 24px 28px 20px;
+  border: 1px solid var(--border-ring);
+}
+.card-title {
+  font-size: 15px; font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 18px;
+}
+.card-chart-area {
+  position: relative;
+}
+
+/* ===== Equipment Status Grid ===== */
+.equipment-grid {
+  display: grid; gap: 10px;
+}
+.equip-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--page-plane);
+}
+.equip-status-dot {
+  width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+  box-shadow: 0 0 0 2px var(--surface-1); /* surface ring */
+}
+.equip-status-dot.good     { background: var(--status-good); }
+.equip-status-dot.warning  { background: var(--status-warning); }
+.equip-status-dot.serious  { background: var(--status-serious); }
+.equip-status-dot.critical { background: var(--status-critical); }
+
+.equip-name {
+  flex: 1; font-size: 14px; font-weight: 500;
+  color: var(--text-primary);
+}
+.equip-status-label {
+  font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; gap: 4px;
+}
+.equip-status-label.good     { color: var(--status-good); }
+.equip-status-label.warning  { color: var(--status-warning); }
+.equip-status-label.serious  { color: var(--status-serious); }
+.equip-status-label.critical { color: var(--status-critical); }
+.equip-uptime {
+  font-size: 12px; color: var(--text-muted);
+  min-width: 60px; text-align: right;
+}
+
+/* ===== Bar Chart (horizontal) ===== */
+.bar-chart { display: flex; flex-direction: column; gap: 0; }
+.bar-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 2px 0; /* 2px surface gap via padding on each row */
+}
+.bar-label {
+  width: 56px; font-size: 13px; color: var(--text-secondary);
+  text-align: right; flex-shrink: 0;
+}
+.bar-track {
+  flex: 1; height: 24px; /* ≤24px thick */
+  position: relative;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 0 4px 4px 0; /* 4px rounded data-end, square at baseline */
+  background: var(--series-1);
+  transition: width 0.6s ease;
+  min-width: 4px;
+}
+.bar-value {
+  font-size: 13px; font-weight: 600;
+  color: var(--text-primary);
+  width: 64px; flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== Line Chart ===== */
+.line-chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 260px; /* includes x-axis band */
+}
+.line-chart-wrap svg {
+  width: 100%; height: 100%;
+  overflow: visible;
+}
+.grid-line {
+  stroke: var(--gridline);
+  stroke-width: 1; /* hairline */
+}
+.base-line {
+  stroke: var(--baseline);
+  stroke-width: 1; /* hairline */
+}
+.data-line {
+  fill: none;
+  stroke-width: 2; /* 2px */
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.data-dot {
+  fill: var(--surface-1);
+  stroke-width: 2; /* 2px surface ring */
+  r: 4; /* ≥8px diameter */
+  cursor: pointer;
+}
+.data-dot-bg {
+  fill: transparent;
+  r: 12; /* 24px hit target */
+  cursor: pointer;
+}
+
+/* ===== Legend ===== */
+.legend-row {
+  display: flex; gap: 20px; flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.legend-item {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--text-secondary);
+}
+.legend-swatch {
+  width: 18px; height: 3px; border-radius: 2px; flex-shrink: 0;
+  /* line key — thin stroke, not a filled box */
+}
+
+/* ===== Tooltip ===== */
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  background: var(--surface-1);
+  border: 1px solid var(--border-ring);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  z-index: 10;
+  transition: opacity 0.12s;
+  white-space: nowrap;
+}
+.tooltip.visible { opacity: 1; }
+.tooltip-date {
+  font-size: 12px; color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.tooltip-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 2px 0;
+}
+.tooltip-key {
+  width: 14px; height: 2px; border-radius: 1px;
+  flex-shrink: 0;
+}
+.tooltip-value {
+  font-weight: 600; color: var(--text-primary);
+  margin-left: auto; padding-left: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.tooltip-name {
+  color: var(--text-secondary);
+}
+
+/* ===== Crosshair ===== */
+.crosshair {
+  position: absolute;
+  top: 0; width: 1px;
+  background: var(--text-muted);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 5;
+  transition: opacity 0.08s;
+}
+.crosshair.visible { opacity: 0.35; }
+
+/* ===== Table view ===== */
+.table-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--text-muted); cursor: pointer;
+  background: none; border: none; font-family: inherit;
+  margin-top: 16px; padding: 4px 0;
+}
+.table-toggle:hover { color: var(--text-secondary); }
+.data-table {
+  width: 100%; border-collapse: collapse;
+  margin-top: 12px; display: none;
+  font-variant-numeric: tabular-nums;
+}
+.data-table.visible { display: table; }
+.data-table th {
+  text-align: left; font-size: 12px; font-weight: 600;
+  color: var(--text-muted); padding: 8px 12px;
+  border-bottom: 1px solid var(--baseline);
+}
+.data-table td {
+  font-size: 13px; color: var(--text-primary);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--gridline);
+}
+.data-table .num { text-align: right; }
+
+/* ===== Theme toggle ===== */
+.theme-toggle {
+  background: none; border: 1px solid var(--baseline);
+  padding: 6px 12px; border-radius: 16px;
+  font-size: 13px; cursor: pointer; font-family: inherit;
+  color: var(--text-secondary);
+}
+.theme-toggle:hover { border-color: var(--text-muted); }
+</style>
+</head>
+<body data-palette="">
+
+<div class="viz-root" id="dashboardRoot">
+  <!-- Header -->
+  <div class="dashboard-header">
+    <div>
+      <div class="dashboard-title">制造执行看板</div>
+      <div class="dashboard-subtitle">数据更新于 <span id="updateTime">--</span></div>
+    </div>
+    <div class="filter-row" id="filterRow">
+      <button class="filter-chip active" data-range="today">今日</button>
+      <button class="filter-chip" data-range="7d">近7天</button>
+      <button class="filter-chip" data-range="30d">近30天</button>
+    </div>
+  </div>
+
+  <!-- Hero OEE + KPI row -->
+  <div class="hero-card">
+    <div class="meter-ring-wrap">
+      <svg class="meter-ring-svg" viewBox="0 0 120 120">
+        <circle class="meter-track" cx="60" cy="60" r="52"/>
+        <circle class="meter-fill" id="oeeMeterFill" cx="60" cy="60" r="52"
+          stroke-dasharray="326.73" stroke-dashoffset="65.35"/>
+      </svg>
+      <div class="meter-center" id="oeeMeterCenter">80%</div>
+    </div>
+    <div>
+      <div class="hero-label">整体设备效率 OEE</div>
+      <div class="hero-figure">80<span class="hero-unit">%</span></div>
+      <div class="hero-delta up" id="oeeDelta">▲ 2.3% vs 昨日</div>
+    </div>
+    <div style="margin-left:auto; display:flex; gap:24px; flex-wrap:wrap;">
+      <div class="stat-tile" style="border:none; padding:12px 16px;">
+        <div class="stat-label">可用性</div>
+        <div class="stat-value" style="font-size:24px;">92<span style="font-size:16px;color:var(--text-muted);">%</span></div>
+      </div>
+      <div class="stat-tile" style="border:none; padding:12px 16px;">
+        <div class="stat-label">性能</div>
+        <div class="stat-value" style="font-size:24px;">88<span style="font-size:16px;color:var(--text-muted);">%</span></div>
+      </div>
+      <div class="stat-tile" style="border:none; padding:12px 16px;">
+        <div class="stat-label">质量</div>
+        <div class="stat-value" style="font-size:24px;">98<span style="font-size:16px;color:var(--text-muted);">%</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI row -->
+  <div class="kpi-row">
+    <div class="stat-tile">
+      <div class="stat-label">今日产量</div>
+      <div class="stat-value">12,847</div>
+      <div class="stat-delta up">▲ 8.1% vs 昨日</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-label">良品数</div>
+      <div class="stat-value">12,589</div>
+      <div class="stat-delta up">▲ 5.3%</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-label">不良品数</div>
+      <div class="stat-value">258</div>
+      <div class="stat-delta down">▼ 2.1%</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-label">故障次数</div>
+      <div class="stat-value">3</div>
+      <div class="stat-delta" style="color:var(--text-muted);">持平</div>
+    </div>
+  </div>
+
+  <!-- Section: Equipment Status + Production Bar Chart -->
+  <div class="section">
+    <!-- Equipment Status -->
+    <div class="card">
+      <div class="card-title">设备运行状态</div>
+      <div class="equipment-grid" id="equipmentGrid"></div>
+    </div>
+
+    <!-- Production by line -->
+    <div class="card">
+      <div class="card-title">今日产量（按线体）</div>
+      <div class="bar-chart" id="barChart"></div>
+    </div>
+  </div>
+
+  <!-- Section: OEE Trend + Yield Rate -->
+  <div class="section">
+    <!-- OEE Trend -->
+    <div class="card">
+      <div class="card-title">OEE 趋势</div>
+      <div class="legend-row" id="oeeLegend"></div>
+      <div class="card-chart-area">
+        <div class="line-chart-wrap" id="oeeChartWrap">
+          <svg id="oeeChartSvg"></svg>
+        </div>
+        <div class="crosshair" id="crosshair"></div>
+        <div class="tooltip" id="tooltip"></div>
+      </div>
+    </div>
+
+    <!-- Yield rate by line -->
+    <div class="card">
+      <div class="card-title">良品率（按线体）</div>
+      <div class="bar-chart" id="yieldChart"></div>
+    </div>
+  </div>
+
+  <!-- Table view -->
+  <button class="table-toggle" id="tableToggle" onclick="toggleTable()">
+    <span id="tableToggleIcon">▸</span> 数据表格视图
+  </button>
+  <table class="data-table" id="dataTable">
+    <thead><tr><th>线体</th><th>产量</th><th>良品数</th><th>良品率</th><th>OEE</th><th>状态</th></tr></thead>
+    <tbody id="dataTableBody"></tbody>
+  </table>
+</div>
+
+<script type="module">
+// ===== Data =====
+const LINES = ['线体A', '线体B', '线体C'];
+const EQ_NAMES = ['冲压机 #1','冲压机 #2','焊接机器人 A','焊接机器人 B','CNC 加工中心','组装线 A','组装线 B'];
+const DAYS = ['07/08','07/09','07/10','07/11','07/12','07/13','07/14'];
+
+// Mock data generator
+function mockData() {
+  return {
+    oee: { current: 80.2, delta: 2.3 },
+    availability: 92.1,
+    performance: 88.4,
+    quality: 98.2,
+    totalOutput: 12847,
+    goodParts: 12589,
+    defectParts: 258,
+    faultCount: 3,
+    lineOutput: [
+      { line: '线体A', output: 5147, good: 5062, yield: 98.3, oee: 83.5 },
+      { line: '线体B', output: 4389, good: 4286, yield: 97.6, oee: 79.2 },
+      { line: '线体C', output: 3311, good: 3241, yield: 97.9, oee: 76.8 },
+    ],
+    equipment: [
+      { name: '冲压机 #1', status: 'good',     label: '运行中', uptime: '99.2%' },
+      { name: '冲压机 #2', status: 'good',     label: '运行中', uptime: '97.8%' },
+      { name: '焊接机器人 A', status: 'warning',  label: '待机中', uptime: '85.1%' },
+      { name: '焊接机器人 B', status: 'good',     label: '运行中', uptime: '96.4%' },
+      { name: 'CNC 加工中心',  status: 'serious',  label: '报警中', uptime: '62.3%' },
+      { name: '组装线 A',    status: 'good',     label: '运行中', uptime: '98.9%' },
+      { name: '组装线 B',    status: 'critical', label: '故障中', uptime: '41.7%' },
+    ],
+    oeeTrend: [
+      { day:'07/08', A:81.2, B:76.8, C:74.1 },
+      { day:'07/09', A:82.5, B:77.4, C:75.0 },
+      { day:'07/10', A:80.1, B:78.9, C:73.2 },
+      { day:'07/11', A:83.0, B:77.1, C:76.5 },
+      { day:'07/12', A:81.8, B:80.3, C:75.8 },
+      { day:'07/13', A:84.2, B:79.5, C:77.2 },
+      { day:'07/14', A:83.5, B:79.2, C:76.8 },
+    ]
+  };
+}
+
+const data = mockData();
+
+// ===== Render helpers =====
+const root = document.getElementById('dashboardRoot');
+const cs = getComputedStyle(root);
+
+// --- Update time ---
+document.getElementById('updateTime').textContent =
+  new Date().toLocaleString('zh-CN', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+
+// --- OEE Meter ---
+const oeePct = data.oee.current;
+document.getElementById('oeeMeterCenter').textContent = Math.round(oeePct) + '%';
+const oeeOffset = 326.73 * (1 - oeePct / 100);
+document.getElementById('oeeMeterFill').style.strokeDashoffset = oeeOffset;
+// Color the meter based on value
+const meterFill = document.getElementById('oeeMeterFill');
+if (oeePct >= 85) meterFill.style.stroke = cs.getPropertyValue('--status-good');
+else if (oeePct >= 70) meterFill.style.stroke = cs.getPropertyValue('--series-1');
+else if (oeePct >= 60) meterFill.style.stroke = cs.getPropertyValue('--status-warning');
+else meterFill.style.stroke = cs.getPropertyValue('--status-critical');
+
+// --- Equipment Status ---
+const equipGrid = document.getElementById('equipmentGrid');
+const STATUS_ICONS = { good:'✅', warning:'⚠️', serious:'🔶', critical:'🔴' };
+data.equipment.forEach(eq => {
+  const row = document.createElement('div');
+  row.className = 'equip-row';
+  row.innerHTML = `
+    <span class="equip-status-dot ${eq.status}"></span>
+    <span class="equip-name">${eq.name}</span>
+    <span class="equip-status-label ${eq.status}">${STATUS_ICONS[eq.status]} ${eq.label}</span>
+    <span class="equip-uptime">${eq.uptime}</span>
+  `;
+  equipGrid.appendChild(row);
+});
+
+// --- Bar Chart: Production by line ---
+const barChart = document.getElementById('barChart');
+const maxOutput = Math.max(...data.lineOutput.map(d => d.output));
+data.lineOutput.forEach(d => {
+  const pct = (d.output / maxOutput * 100).toFixed(1);
+  const row = document.createElement('div');
+  row.className = 'bar-row';
+  row.innerHTML = `
+    <span class="bar-label">${d.line}</span>
+    <div class="bar-track">
+      <div class="bar-fill" style="width:${pct}%;" data-value="${d.output.toLocaleString()}"></div>
+    </div>
+    <span class="bar-value">${d.output.toLocaleString()}</span>
+  `;
+  // hover tooltip on bar
+  const fill = row.querySelector('.bar-fill');
+  fill.addEventListener('pointerenter', () => {
+    showBarTooltip(fill, d);
+  });
+  fill.addEventListener('pointerleave', hideTooltip);
+  barChart.appendChild(row);
+});
+
+// --- Bar Chart: Yield rate ---
+const yieldChart = document.getElementById('yieldChart');
+data.lineOutput.forEach((d, i) => {
+  const pct = (d.yield / 100 * 100).toFixed(1);
+  const row = document.createElement('div');
+  row.className = 'bar-row';
+  const colorVar = `--series-${i+1}`;
+  row.innerHTML = `
+    <span class="bar-label">${d.line}</span>
+    <div class="bar-track">
+      <div class="bar-fill" style="width:${pct}%; background:${cs.getPropertyValue(colorVar)};" data-value="${d.yield}%"></div>
+    </div>
+    <span class="bar-value">${d.yield}%</span>
+  `;
+  yieldChart.appendChild(row);
+});
+
+// ===== SVG Line Chart — OEE Trend =====
+const chartWrap = document.getElementById('oeeChartWrap');
+const svg = document.getElementById('oeeChartSvg');
+const MARGIN = { top: 12, right: 24, bottom: 32, left: 48 };
+const W = chartWrap.clientWidth;
+const H = chartWrap.clientHeight;
+const PW = W - MARGIN.left - MARGIN.right;
+const PH = H - MARGIN.top - MARGIN.bottom;
+
+const lineKeys = ['A','B','C'];
+const lineNames = ['线体A','线体B','线体C'];
+const colors = lineKeys.map((_, i) => cs.getPropertyValue(`--series-${i+1}`).trim());
+
+svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+svg.innerHTML = '';
+
+// Scales
+const yMin = 65, yMax = 90;
+const xScale = i => MARGIN.left + (i / (DAYS.length - 1)) * PW;
+const yScale = v => MARGIN.top + PH - ((v - yMin) / (yMax - yMin)) * PH;
+
+// Gridlines + Y-axis
+for (let v = 70; v <= 90; v += 5) {
+  const y = yScale(v);
+  const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+  line.setAttribute('x1', MARGIN.left); line.setAttribute('x2', W - MARGIN.right);
+  line.setAttribute('y1', y); line.setAttribute('y2', y);
+  line.setAttribute('class', 'grid-line');
+  svg.appendChild(line);
+  // Y tick
+  const text = document.createElementNS('http://www.w3.org/2000/svg','text');
+  text.setAttribute('x', MARGIN.left - 8);
+  text.setAttribute('y', y + 4);
+  text.setAttribute('text-anchor', 'end');
+  text.setAttribute('fill', cs.getPropertyValue('--text-muted'));
+  text.setAttribute('font-size', '12');
+  text.setAttribute('font-family', 'system-ui, sans-serif');
+  text.textContent = v + '%';
+  svg.appendChild(text);
+}
+
+// X-axis baseline
+const bl = document.createElementNS('http://www.w3.org/2000/svg','line');
+bl.setAttribute('x1', MARGIN.left); bl.setAttribute('x2', W - MARGIN.right);
+bl.setAttribute('y1', yScale(yMin)); bl.setAttribute('y2', yScale(yMin));
+bl.setAttribute('class', 'base-line');
+svg.appendChild(bl);
+
+// X ticks
+DAYS.forEach((d, i) => {
+  const x = xScale(i);
+  const text = document.createElementNS('http://www.w3.org/2000/svg','text');
+  text.setAttribute('x', x);
+  text.setAttribute('y', H - 8);
+  text.setAttribute('text-anchor', 'middle');
+  text.setAttribute('fill', cs.getPropertyValue('--text-muted'));
+  text.setAttribute('font-size', '12');
+  text.setAttribute('font-family', 'system-ui, sans-serif');
+  text.textContent = d;
+  svg.appendChild(text);
+});
+
+// Draw lines
+lineKeys.forEach((k, ki) => {
+  const points = data.oeeTrend.map((d, i) => `${xScale(i)},${yScale(d[k])}`).join(' ');
+  const poly = document.createElementNS('http://www.w3.org/2000/svg','polyline');
+  poly.setAttribute('points', points);
+  poly.setAttribute('class', 'data-line');
+  poly.setAttribute('stroke', colors[ki]);
+  poly.setAttribute('data-series', k);
+  svg.appendChild(poly);
+
+  // Dots (surface ring via stroke, fill=surface)
+  data.oeeTrend.forEach((d, i) => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+    // hit target
+    const bg = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    bg.setAttribute('cx', xScale(i)); bg.setAttribute('cy', yScale(d[k]));
+    bg.setAttribute('class', 'data-dot-bg');
+    bg.setAttribute('data-series', k);
+    bg.setAttribute('data-idx', i);
+    g.appendChild(bg);
+    // visible dot
+    const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    dot.setAttribute('cx', xScale(i)); dot.setAttribute('cy', yScale(d[k]));
+    dot.setAttribute('class', 'data-dot');
+    dot.setAttribute('stroke', colors[ki]);
+    dot.setAttribute('data-series', k);
+    dot.setAttribute('data-idx', i);
+    g.appendChild(dot);
+    svg.appendChild(g);
+  });
+});
+
+// Legend
+const legendEl = document.getElementById('oeeLegend');
+lineKeys.forEach((k, i) => {
+  const item = document.createElement('div');
+  item.className = 'legend-item';
+  item.innerHTML = `
+    <span class="legend-swatch" style="background:${colors[i]};"></span>
+    <span>${lineNames[i]}</span>
+  `;
+  legendEl.appendChild(item);
+});
+
+// ===== Crosshair + Tooltip =====
+const crosshair = document.getElementById('crosshair');
+const tooltip = document.getElementById('tooltip');
+const chartArea = chartWrap;
+
+let svgRect = null;
+
+function updateSvgRect() { svgRect = chartWrap.getBoundingClientRect(); }
+updateSvgRect();
+window.addEventListener('resize', updateSvgRect);
+
+chartArea.addEventListener('pointermove', (e) => {
+  if (!svgRect) return;
+  const rx = e.clientX - svgRect.left;
+  // Find nearest data index
+  let bestI = 0, bestD = Infinity;
+  DAYS.forEach((_, i) => {
+    const sx = xScale(i) / W * svgRect.width;
+    const dist = Math.abs(rx - sx);
+    if (dist < bestD) { bestD = dist; bestI = i; }
+  });
+
+  const cx = xScale(bestI) / W * svgRect.width;
+  crosshair.style.left = cx + 'px';
+  crosshair.style.height = (PH + MARGIN.top) + 'px';
+  crosshair.style.top = MARGIN.top + 'px';
+  crosshair.classList.add('visible');
+
+  // Build tooltip
+  const d = data.oeeTrend[bestI];
+  let html = `<div class="tooltip-date">${d.day}</div>`;
+  lineKeys.forEach((k, i) => {
+    html += `
+      <div class="tooltip-row">
+        <span class="tooltip-key" style="background:${colors[i]};"></span>
+        <span class="tooltip-name">${lineNames[i]}</span>
+        <span class="tooltip-value">${d[k]}%</span>
+      </div>`;
+  });
+  tooltip.innerHTML = html;
+  tooltip.classList.add('visible');
+
+  // Position tooltip
+  const tx = bestI >= DAYS.length / 2
+    ? (cx - 10 - 180) : (cx + 20);
+  const ty = MARGIN.top;
+  tooltip.style.left = tx + 'px';
+  tooltip.style.top = ty + 'px';
+});
+
+chartArea.addEventListener('pointerleave', () => {
+  crosshair.classList.remove('visible');
+  tooltip.classList.remove('visible');
+});
+
+// ===== Bar tooltip =====
+function showBarTooltip(el, d) {
+  const rect = el.getBoundingClientRect();
+  const parentRect = el.closest('.card')?.getBoundingClientRect() || el.closest('.viz-root').getBoundingClientRect();
+  const left = rect.right - parentRect.left + 12;
+  const top = rect.top - parentRect.top;
+  tooltip.innerHTML = `
+    <div class="tooltip-row">
+      <span class="tooltip-name">${d.line}</span>
+      <span class="tooltip-value">${d.output.toLocaleString()} 件</span>
+    </div>`;
+  tooltip.style.left = left + 'px';
+  tooltip.style.top = top + 'px';
+  tooltip.classList.add('visible');
+}
+function hideTooltip() { tooltip.classList.remove('visible'); }
+
+// ===== Filter row =====
+document.getElementById('filterRow').addEventListener('click', (e) => {
+  const chip = e.target.closest('.filter-chip');
+  if (!chip) return;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+  // In a real dashboard, refetch data here; for now show a subtle flash
+  root.style.opacity = '0.92';
+  setTimeout(() => { root.style.opacity = '1'; }, 150);
+});
+
+// ===== Table view =====
+const dataTable = document.getElementById('dataTable');
+const dataTableBody = document.getElementById('dataTableBody');
+const tableToggleIcon = document.getElementById('tableToggleIcon');
+
+// Populate table
+data.lineOutput.forEach(d => {
+  const tr = document.createElement('tr');
+  const eq = data.equipment.find(e => e.name.includes(d.line.replace('线体','').replace('A','A').replace('B','B').replace('C','C')));
+  tr.innerHTML = `
+    <td>${d.line}</td>
+    <td class="num">${d.output.toLocaleString()}</td>
+    <td class="num">${d.good.toLocaleString()}</td>
+    <td class="num">${d.yield}%</td>
+    <td class="num">${d.oee}%</td>
+    <td>${eq ? eq.label : '--'}</td>
+  `;
+  dataTableBody.appendChild(tr);
+});
+
+window.toggleTable = function() {
+  const visible = dataTable.classList.toggle('visible');
+  tableToggleIcon.textContent = visible ? '▾' : '▸';
+};
+
+// ===== Theme toggle (inject button) =====
+const themeBtn = document.createElement('button');
+themeBtn.className = 'theme-toggle';
+themeBtn.textContent = '🌓 深色模式';
+themeBtn.style.position = 'fixed';
+themeBtn.style.bottom = '20px';
+themeBtn.style.right = '20px';
+themeBtn.style.zIndex = '50';
+themeBtn.onclick = () => {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  themeBtn.textContent = isDark ? '🌓 深色模式' : '☀️ 浅色模式';
+  window.dispatchEvent(new Event('resize'));
+};
+document.body.appendChild(themeBtn);
+</script>
+</body>
+</html>
