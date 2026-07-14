@@ -1,0 +1,5 @@
+*.lnk
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.tmp

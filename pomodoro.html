@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🍅 番茄钟</title>
+<style>
+  :root {
+    --work: #e74c3c;
+    --break: #2ecc71;
+    --long-break: #3498db;
+    --bg: #1a1a2e;
+    --card: #16213e;
+    --text: #eee;
+    --muted: #999;
+    --ring-bg: #2a2a4a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .app {
+    background: var(--card);
+    border-radius: 24px;
+    padding: 48px 40px 36px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    width: 400px;
+    max-width: 94vw;
+  }
+
+  .timer-ring-wrap {
+    position: relative;
+    width: 260px; height: 260px;
+    margin: 0 auto 28px;
+  }
+
+  .timer-ring {
+    transform: rotate(-90deg);
+    width: 260px; height: 260px;
+  }
+  .ring-bg {
+    fill: none;
+    stroke: var(--ring-bg);
+    stroke-width: 8;
+  }
+  .ring-progress {
+    fill: none;
+    stroke: var(--work);
+    stroke-width: 8;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s linear, stroke 0.3s;
+  }
+  .ring-progress.break-mode { stroke: var(--break); }
+  .ring-progress.long-break-mode { stroke: var(--long-break); }
+
+  .timer-text {
+    position: absolute;
+    inset: 0;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+  }
+  .time {
+    font-size: 56px; font-weight: 700;
+    letter-spacing: 2px; font-variant-numeric: tabular-nums;
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', 'PingFang SC', monospace;
+  }
+  .label {
+    font-size: 14px; color: var(--muted);
+    margin-top: 6px; letter-spacing: 1px;
+  }
+
+  .mode-tabs {
+    display: flex; gap: 8px;
+    margin-bottom: 24px; justify-content: center;
+  }
+  .mode-tab {
+    padding: 8px 16px; border-radius: 20px;
+    border: 1px solid #444; background: transparent;
+    color: var(--muted); cursor: pointer;
+    font-size: 13px; font-family: inherit;
+    transition: all 0.2s;
+  }
+  .mode-tab:hover { border-color: #888; color: #ddd; }
+  .mode-tab.active {
+    background: var(--work); border-color: var(--work);
+    color: #fff;
+  }
+  .mode-tab.active.break-active { background: var(--break); border-color: var(--break); }
+  .mode-tab.active.long-active { background: var(--long-break); border-color: var(--long-break); }
+
+  .buttons {
+    display: flex; gap: 12px; justify-content: center;
+    margin-bottom: 20px;
+  }
+  button {
+    padding: 12px 28px; border-radius: 28px;
+    border: none; font-size: 15px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+    transition: all 0.2s; letter-spacing: 0.5px;
+  }
+  .btn-start {
+    background: var(--work); color: #fff;
+    min-width: 110px;
+  }
+  .btn-start:hover { filter: brightness(1.15); transform: translateY(-1px); }
+  .btn-start.break-btn { background: var(--break); }
+  .btn-start.long-btn { background: var(--long-break); }
+
+  .btn-reset {
+    background: transparent; color: var(--muted);
+    border: 1px solid #444;
+  }
+  .btn-reset:hover { border-color: #888; color: #ddd; }
+
+  .stats {
+    display: flex; justify-content: center; gap: 24px;
+    font-size: 13px; color: var(--muted);
+  }
+  .stats span { color: var(--text); font-weight: 600; }
+
+  .notification-toast {
+    position: fixed; top: 20px;
+    left: 50%; transform: translateX(-50%);
+    background: var(--card); color: var(--text);
+    padding: 14px 28px; border-radius: 12px;
+    font-size: 15px; font-weight: 600;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.4s;
+    z-index: 100;
+  }
+  .notification-toast.show { opacity: 1; }
+
+  @keyframes pulse {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .timer-text.running .time { animation: pulse 2s ease-in-out infinite; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="timer-ring-wrap">
+    <svg class="timer-ring" viewBox="0 0 260 260">
+      <circle class="ring-bg" cx="130" cy="130" r="120"/>
+      <circle class="ring-progress" id="ring" cx="130" cy="130" r="120"
+        stroke-dasharray="753.98" stroke-dashoffset="0"/>
+    </svg>
+    <div class="timer-text" id="timerText">
+      <div class="time" id="timeDisplay">25:00</div>
+      <div class="label" id="labelDisplay">工作时间</div>
+    </div>
+  </div>
+
+  <div class="mode-tabs">
+    <button class="mode-tab active" data-mode="work" onclick="setMode('work')">🍅 工作 25分钟</button>
+    <button class="mode-tab" data-mode="break" onclick="setMode('break')">☕ 休息 5分钟</button>
+    <button class="mode-tab" data-mode="longBreak" onclick="setMode('longBreak')">🌴 长休息 15分钟</button>
+  </div>
+
+  <div class="buttons">
+    <button class="btn-start" id="btnStart" onclick="toggleTimer()">开 始</button>
+    <button class="btn-reset" onclick="resetTimer()">重 置</button>
+  </div>
+
+  <div class="stats">
+    <div>✅ 完成 <span id="sessionsCount">0</span> 个番茄</div>
+  </div>
+</div>
+
+<div class="notification-toast" id="toast"></div>
+
+<script>
+  const CIRCUMFERENCE = 2 * Math.PI * 120; // ~753.98
+
+  const MODES = {
+    work:    { label: '工作时间', icon: '🍅', minutes: 25, color: 'var(--work)', cssClass: '' },
+    break:   { label: '短休息',   icon: '☕', minutes: 5,  color: 'var(--break)', cssClass: 'break-mode' },
+    longBreak:{ label: '长休息',  icon: '🌴', minutes: 15, color: 'var(--long-break)', cssClass: 'long-break-mode' }
+  };
+
+  let currentMode = 'work';
+  let totalSeconds = MODES.work.minutes * 60;
+  let remainingSeconds = totalSeconds;
+  let timerInterval = null;
+  let sessionsCompleted = 0;
+
+  // Load sessions from localStorage
+  try {
+    const saved = localStorage.getItem('pomodoro_sessions');
+    if (saved) sessionsCompleted = parseInt(saved) || 0;
+  } catch(e) {}
+
+  function formatTime(sec) {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  }
+
+  function updateDisplay() {
+    document.getElementById('timeDisplay').textContent = formatTime(remainingSeconds);
+    document.getElementById('labelDisplay').textContent = MODES[currentMode].label;
+
+    const offset = CIRCUMFERENCE * (1 - remainingSeconds / totalSeconds);
+    document.getElementById('ring').style.strokeDashoffset = offset;
+
+    const mode = MODES[currentMode];
+    const ring = document.getElementById('ring');
+    ring.classList.remove('break-mode', 'long-break-mode');
+    if (mode.cssClass) ring.classList.add(mode.cssClass);
+
+    // Update button styles based on mode
+    const btn = document.getElementById('btnStart');
+    btn.classList.remove('break-btn', 'long-btn');
+    if (currentMode === 'break') btn.classList.add('break-btn');
+    if (currentMode === 'longBreak') btn.classList.add('long-btn');
+
+    // Update mode tabs
+    document.querySelectorAll('.mode-tab').forEach(tab => {
+      tab.classList.remove('active', 'break-active', 'long-active');
+      if (tab.dataset.mode === currentMode) {
+        tab.classList.add('active');
+        if (currentMode === 'break') tab.classList.add('break-active');
+        if (currentMode === 'longBreak') tab.classList.add('long-active');
+      }
+    });
+
+    document.getElementById('sessionsCount').textContent = sessionsCompleted;
+  }
+
+  function setMode(mode) {
+    if (timerInterval) {
+      if (!confirm('切换模式将停止当前计时，确定吗？')) return;
+      stopTimer();
+    }
+    currentMode = mode;
+    totalSeconds = MODES[mode].minutes * 60;
+    remainingSeconds = totalSeconds;
+    updateDisplay();
+  }
+
+  function toggleTimer() {
+    if (timerInterval) {
+      stopTimer();
+    } else {
+      startTimer();
+    }
+  }
+
+  function startTimer() {
+    document.getElementById('btnStart').textContent = '暂 停';
+    document.getElementById('timerText').classList.add('running');
+
+    timerInterval = setInterval(() => {
+      remainingSeconds--;
+      if (remainingSeconds <= 0) {
+        timerComplete();
+      }
+      updateDisplay();
+    }, 1000);
+  }
+
+  function stopTimer() {
+    clearInterval(timerInterval);
+    timerInterval = null;
+    document.getElementById('btnStart').textContent = '开 始';
+    document.getElementById('timerText').classList.remove('running');
+  }
+
+  function resetTimer() {
+    if (timerInterval) stopTimer();
+    remainingSeconds = totalSeconds;
+    updateDisplay();
+  }
+
+  function timerComplete() {
+    stopTimer();
+    remainingSeconds = 0;
+    updateDisplay();
+
+    // Play sound
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine'; osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.3, i * 0.15);
+        gain.gain.exponentialRampToValueAtTime(0.001, i * 0.15 + 0.4);
+        osc.start(i * 0.15); osc.stop(i * 0.15 + 0.4);
+      });
+    } catch(e) {}
+
+    // Show toast
+    const mode = MODES[currentMode];
+    const toast = document.getElementById('toast');
+    toast.textContent = `${mode.icon} ${mode.label} 结束！`;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+
+    // Browser notification
+    if (Notification.permission === 'granted') {
+      new Notification('🍅 番茄钟', { body: `${mode.label}时间到！`, icon: '🍅' });
+    }
+
+    if (currentMode === 'work') {
+      sessionsCompleted++;
+      try { localStorage.setItem('pomodoro_sessions', sessionsCompleted); } catch(e) {}
+    }
+
+    // Auto-advance: work → break, break → work
+    if (currentMode === 'work') {
+      setMode('break');
+    } else {
+      setMode('work');
+    }
+    updateDisplay();
+  }
+
+  // Request notification permission on first interaction
+  document.addEventListener('click', () => {
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, { once: true });
+
+  // Initial render
+  updateDisplay();
+</script>
+</body>
+</html>
